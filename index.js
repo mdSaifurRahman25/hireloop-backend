@@ -23,13 +23,26 @@ export async function connectToMongoDB() {
   } catch (err) {
     console.dir(err);
   }
-}
+}; 
 
+const connectedClient = await connectToMongoDB();
+const database = connectedClient.db('hireloop'); 
+const users = database.collection('user'); 
+const jobs = database.collection('jobs'); 
+
+
+// API 
+// GET API
 app.get("/", (req, res) => {
   res.send("HireLoop Backend is running!");
 });
 
+app.get('/users', async (req, res) => {
+    const cursor = users.find({}); 
+    const results = await cursor.toArray(); 
+    res.send(results); 
+}); 
+
 app.listen(port, async () => {
-  await connectToMongoDB();
   console.log(`Server is running successfully at https://localhost:${port}`);
 });
