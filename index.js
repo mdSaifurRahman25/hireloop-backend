@@ -121,6 +121,71 @@ app.post('/new', async (req, res) => {
   }
 }); 
 
+// GET SINGLE JOB API
+app.get('/jobs/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid job ID." });
+    }
+    const job = await jobs.findOne({ _id: new ObjectId(id) });
+    if (!job) {
+      return res.status(404).json({ message: "Job not found." });
+    }
+    res.json(job);
+  } catch (error) {
+    console.error("GET /jobs/:id failed:", error);
+    res.status(500).json({ message: "Could not fetch the job." });
+  }
+});
+
+// UPDATE JOB API
+app.put('/jobs/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid job ID." });
+    }
+
+    const body = req.body ?? {};
+    const deadline = body.deadline ? new Date(body.deadline) : null;
+    if (deadline && Number.isNaN(deadline.getTime())) {
+      return res.status(400).json({ message: "Invalid application deadline." });
+    }
+
+    const updatedJob = {
+      ...(body.title && { title: body.title.trim() }),
+      ...(body.companyName && { companyName: body.companyName.trim() }),
+      ...(body.category && { category: body.category }),
+      ...(body.jobType && { jobType: body.jobType }),
+      isRemote: body.isRemote === true || body.isRemote === "true",
+      ...(body.location && { location: body.location.trim() }),
+      deadline,
+      minSalary: toNumberOrNull(body.minSalary),
+      maxSalary: toNumberOrNull(body.maxSalary),
+      frequency: body.frequency ?? null,
+      ...(body.responsibilities && { responsibilities: body.responsibilities.trim() }),
+      ...(body.qualifications && { qualifications: body.qualifications.trim() }),
+      updatedAt: new Date(),
+    };
+
+    const result = await jobs.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updatedJob }
+    );
+
+    res.json({
+      message: "Job updated successfully.",
+      matchedCount: result.matchedCount,
+      modifiedCount: result.modifiedCount,
+      job: updatedJob,
+    });
+  } catch (error) {
+    console.error("PUT /jobs/:id failed:", error);
+    res.status(500).json({ message: "Could not update the job." });
+  }
+});
+
 //JOB DELETE API 
 app.delete('/jobs/:id', async (req, res) => {
   try {
