@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import 'dotenv/config'; 
 
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -33,7 +33,7 @@ const jobs = database.collection('jobs');
 
 
 // API 
-// GET API
+// User Related API
 app.get("/", (req, res) => {
   res.send("HireLoop Backend is running!");
 });
@@ -43,6 +43,15 @@ app.get('/users', async (req, res) => {
     const results = await cursor.toArray(); 
     res.send(results); 
 }); 
+
+// Job Related API
+
+//GET JOB API 
+app.get('/jobs', async (req, res) => {
+  const cursor = jobs.find(); 
+  const result = await cursor.toArray(); 
+  res.send(result); 
+})
 
 // POST API
 const REQUIRED_JOB_FIELDS = [
@@ -110,7 +119,23 @@ app.post('/new', async (req, res) => {
     console.error("POST /new failed:", error);
     res.status(500).json({ message: "Could not publish the job." });
   }
-})
+}); 
+
+//JOB DELETE API 
+app.delete('/jobs/:id', async (req, res) => {
+  try {
+    const { id } = req.params; 
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid job ID." });
+    }
+    const query = { _id: new ObjectId(id) }; 
+    const result = await jobs.deleteOne(query); 
+    res.json(result); 
+  } catch (error) {
+    console.error("DELETE /jobs/:id failed:", error);
+    res.status(500).json({ message: "Could not delete the job." });
+  }
+}); 
 
 app.listen(port, async () => {
   console.log(`Server is running successfully at http://localhost:${port}`);
