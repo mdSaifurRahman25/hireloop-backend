@@ -46,12 +46,170 @@ app.get('/users', async (req, res) => {
 
 // Job Related API
 
-//GET JOB API 
+// GET JOB API (supports search, filtering, sorting, pagination, and dynamic counts)
 app.get('/jobs', async (req, res) => {
-  const cursor = jobs.find(); 
-  const result = await cursor.toArray(); 
-  res.send(result); 
-})
+  try {
+    const {
+      q,
+      type,
+      category,
+      minSalary,
+      maxSalary,
+      salaryRange,
+      sort,
+      page,
+      limit,
+      format,
+    } = req.query;
+
+    const hasFiltersOrPagination = Boolean(
+      q || type || category || salaryRange || minSalary || maxSalary || sort || page || limit
+    );
+
+    // If no query parameters at all and no format=paginated, return full array for backwards compatibility
+    if (!hasFiltersOrPagination && format !== 'paginated') {
+      const allJobs = await jobs.find({}).sort({ createdAt: -1, _id: -1 }).toArray();
+      return res.json(allJobs);
+    }
+
+    // Build filter query
+    const filter = {};
+
+    // 1. Text Search Query `q`
+    if (q && typeof q === 'string' && q.trim()) {
+      const searchRegex = new RegExp(q.trim(), 'i');
+      filter.$or = [
+        { title: searchRegex },
+        { jobTitle: searchRegex },
+        { companyName: searchRegex },
+        { location: searchRegex },
+        { category: searchRegex },
+        { responsibilities: searchRegex },
+        { qualifications: searchRegex },
+      ];
+    }
+
+    // 2. Job Type filter (Single select / Radio button support)
+    if (type && type !== 'All' && type !== 'all') {
+      filter.jobType = { $regex: new RegExp(`^${type.trim()}$`, 'i') };
+    }
+
+    // 3. Category / Industry filter
+    if (category && category !== 'All' && category !== 'all') {
+      filter.category = { $regex: new RegExp(`^${category.trim()}$`, 'i') };
+    }
+
+    // 4. Salary Filter
+    if (salaryRange && salaryRange !== 'All' && salaryRange !== 'all') {
+      filter.$and = filter.$and || [];
+      if (salaryRange === '0-50' || salaryRange === 'under-50k') {
+        filter.$and.push({
+          $or: [
+            { minSalary: { $lte: 50000, $gt: 0 } },
+            { maxSalary: { $lte: 50000, $gt: 0 } },
+          ],
+        });
+      } else if (salaryRange === '50-100' || salaryRange === '50k-100k') {
+        filter.$and.push({
+          $or: [
+            { maxSalary: { $gte: 50000, $lte: 100000 } },
+            { minSalary: { $gte: 50000, $lte: 100000 } },
+          ],
+        });
+      } else if (salaryRange === '100-150' || salaryRange === '100k-150k') {
+        filter.$and.push({
+          $or: [
+            { maxSalary: { $gte: 100000, $lte: 150000 } },
+            { minSalary: { $gte: 100000, $lte: 150000 } },
+          ],
+        });
+      } else if (salaryRange === '150+' || salaryRange === '150k+') {
+        filter.$and.push({
+          $or: [
+            { maxSalary: { $gte: 150000 } },
+            { minSalary: { $gte: 150000 } },
+          ],
+        });
+      }
+    } else {
+      if (minSalary && !isNaN(Number(minSalary))) {
+        filter.$and = filter.$and || [];
+        filter.$and.push({
+          $or: [
+            { maxSalary: { $gte: Number(minSalary) } },
+            { minSalary: { $gte: Number(minSalary) } },
+          ],
+        });
+      }
+      if (maxSalary && !isNaN(Number(maxSalary))) {
+        filter.$and = filter.$and || [];
+        filter.$and.push({
+          $or: [
+            { minSalary: { $lte: Number(maxSalary) } },
+            { maxSalary: { $lte: Number(maxSalary) } },
+          ],
+        });
+      }
+    }
+
+    // 5. Sorting
+    let sortObj = { createdAt: -1, _id: -1 };
+    if (sort === 'Highest Salary') {
+      sortObj = { maxSalary: -1, minSalary: -1, createdAt: -1 };
+    } else if (sort === 'Full-time First') {
+      sortObj = { jobType: 1, createdAt: -1 };
+    } else {
+      sortObj = { createdAt: -1, _id: -1 };
+    }
+
+    // Count matching documents
+    const total = await jobs.countDocuments(filter);
+
+    // Pagination
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = parseInt(limit, 10) > 0 ? parseInt(limit, 10) : 10;
+    const skip = (pageNum - 1) * limitNum;
+
+    const matchedJobs = await jobs
+      .find(filter)
+      .sort(sortObj)
+      .skip(skip)
+      .limit(limitNum)
+      .toArray();
+
+    // Aggregations for filter breakdown counts
+    const typeCountsRaw = await jobs
+      .aggregate([{ $group: { _id: "$jobType", count: { $sum: 1 } } }])
+      .toArray();
+
+    const categoryCountsRaw = await jobs
+      .aggregate([{ $group: { _id: "$category", count: { $sum: 1 } } }])
+      .toArray();
+
+    const typeCounts = {};
+    typeCountsRaw.forEach((item) => {
+      if (item._id) typeCounts[item._id] = item.count;
+    });
+
+    const categoryCounts = {};
+    categoryCountsRaw.forEach((item) => {
+      if (item._id) categoryCounts[item._id] = item.count;
+    });
+
+    res.json({
+      jobs: matchedJobs,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.max(1, Math.ceil(total / limitNum)),
+      typeCounts,
+      categoryCounts,
+    });
+  } catch (error) {
+    console.error("GET /jobs failed:", error);
+    res.status(500).json({ message: "Could not fetch jobs." });
+  }
+});
 
 // POST API
 const REQUIRED_JOB_FIELDS = [
