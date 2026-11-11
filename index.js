@@ -30,6 +30,7 @@ const connectedClient = await connectToMongoDB();
 const database = connectedClient.db('hireloop'); 
 const users = database.collection('user'); 
 const jobs = database.collection('jobs'); 
+const applications = database.collection('applications')
 
 
 // API 
@@ -357,6 +358,43 @@ app.delete('/jobs/:id', async (req, res) => {
   } catch (error) {
     console.error("DELETE /jobs/:id failed:", error);
     res.status(500).json({ message: "Could not delete the job." });
+  }
+}); 
+
+app.get('/applications', async (req, res) => {
+  try {
+    const { email, jobId } = req.query;
+    const filter = {};
+    if (email && typeof email === 'string' && email.trim()) {
+      filter.applicantEmail = { $regex: new RegExp(`^${email.trim()}$`, 'i') };
+    }
+    if (jobId && typeof jobId === 'string' && jobId.trim()) {
+      filter.jobId = jobId.trim();
+    }
+
+    const list = await applications
+      .find(filter)
+      .sort({ appliedAt: -1, _id: -1 })
+      .toArray();
+
+    res.json(list);
+  } catch (error) {
+    console.error("GET /applications failed:", error);
+    res.status(500).json({ message: "Could not fetch applications." });
+  }
+});
+
+app.post('/applications', async (req, res) => {
+  try {
+    const application = req.body;
+    if (!application || typeof application !== 'object') {
+      return res.status(400).json({ message: "Invalid application payload." });
+    }
+    const result = await applications.insertOne(application);
+    res.status(201).json(result);
+  } catch (error) {
+    console.error("POST /applications failed:", error);
+    res.status(500).json({ message: "Could not save application." });
   }
 }); 
 
