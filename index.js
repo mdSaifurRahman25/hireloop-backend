@@ -388,14 +388,35 @@ app.get('/applications', async (req, res) => {
 app.get('/applications/count', async (req, res) => {
   try {
     const query = {}; 
+    const conditions = [];
+
     if (req.query.applicantId) {
-      query.userId = req.query.applicantId; 
-    }; 
+      const applicantId = String(req.query.applicantId).trim();
+      conditions.push(
+        { userId: applicantId },
+        { applicantId: applicantId },
+        { applicantEmail: { $regex: new RegExp(`^${applicantId}$`, 'i') } },
+      );
+    }
+
+    if (req.query.email) {
+      const email = String(req.query.email).trim();
+      conditions.push(
+        { applicantEmail: { $regex: new RegExp(`^${email}$`, 'i') } },
+        { userId: email },
+        { email: { $regex: new RegExp(`^${email}$`, 'i') } },
+      );
+    }
+
+    if (conditions.length > 0) {
+      query.$or = conditions;
+    }
+
     const result = await applications.countDocuments(query); 
-    res.send({count: result});    
+    res.send({ count: result });    
   } catch (error) {
-    console.error("GET /applications failed:", error);
-    res.status(500).json({ message: "Could not fetch applications." });
+    console.error("GET /applications/count failed:", error);
+    res.status(500).json({ message: "Could not fetch applications count." });
   }
 });
 
