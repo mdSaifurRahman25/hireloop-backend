@@ -384,6 +384,21 @@ app.get('/applications', async (req, res) => {
   }
 });
 
+
+app.get('/applications/count', async (req, res) => {
+  try {
+    const query = {}; 
+    if (req.query.applicantId) {
+      query.userId = req.query.applicantId; 
+    }; 
+    const result = await applications.countDocuments(query); 
+    res.send({count: result});    
+  } catch (error) {
+    console.error("GET /applications failed:", error);
+    res.status(500).json({ message: "Could not fetch applications." });
+  }
+});
+
 app.post('/applications', async (req, res) => {
   try {
     const application = req.body;
